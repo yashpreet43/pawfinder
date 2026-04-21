@@ -1,18 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { 
-  getFirestore, 
-  collection, 
+import {
+  getFirestore,
+  collection,
   getDocs,
   doc,
-  updateDoc 
+  updateDoc,
 } from "firebase/firestore";
 import { app } from "../../lib/firebase";
 import Link from "next/link";
 
 export default function Listings() {
   const [pets, setPets] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   // filters
   const [maxAge, setMaxAge] = useState("");
@@ -29,38 +30,57 @@ export default function Listings() {
 
   const fetchData = async () => {
     const db = getFirestore(app);
-    const querySnapshot = await getDocs(collection(db, "pets"));
 
-    const data: any[] = [];
-    querySnapshot.forEach((doc) => {
-      data.push({ id: doc.id, ...doc.data() });
-    });
+    try {
+      const querySnapshot = await getDocs(collection(db, "pets"));
 
-    setPets(data);
+      const data: any[] = [];
+      querySnapshot.forEach((doc) => {
+        data.push({ id: doc.id, ...doc.data() });
+      });
+
+      setPets(data);
+    } catch (error) {
+      console.error("Error fetching pets:", error);
+      alert("Failed to load pets.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleAdopt = async (petId: string) => {
     const db = getFirestore(app);
     const petRef = doc(db, "pets", petId);
-    
+
     try {
       await updateDoc(petRef, {
-        status: "adopted"
+        status: "adopted",
       });
-      
-      // Optimistically update UI
-      setPets(pets.map(pet => 
-        pet.id === petId 
-          ? { ...pet, status: "adopted" }
-          : pet
-      ));
-      
+
+      setPets(
+        pets.map((pet) =>
+          pet.id === petId ? { ...pet, status: "adopted" } : pet
+        )
+      );
+
       alert("Pet adopted successfully! 🥳");
     } catch (error) {
       console.error("Error adopting pet:", error);
       alert("Failed to adopt pet. Please try again.");
     }
   };
+
+  const filteredPets = pets.filter((item) => {
+    return (
+      (maxAge === "" || Number(item.age) <= Number(maxAge)) &&
+      (searchLocation === "" ||
+        item.location?.toLowerCase().includes(searchLocation.toLowerCase())) &&
+      (!friendlyFilter || item.traits?.friendly) &&
+      (!vaccinatedFilter || item.traits?.vaccinated) &&
+      (!trainedFilter || item.traits?.trained) &&
+      (typeFilter === "" || item.type === typeFilter)
+    );
+  });
 
   return (
     <div style={{ padding: "20px" }}>
@@ -69,14 +89,12 @@ export default function Listings() {
       <p className="subtitle">
         Find your perfect companion based on your preferences 💛
       </p>
-       <div style={{ textAlign: "center", marginTop: "10px" }}>
-     
-      <Link href="/learn">
-        <button className="learn-button">
-          📚 Learn how to care for pets
-        </button>
-      </Link>
-    </div>
+
+      <div style={{ textAlign: "center", marginTop: "10px" }}>
+        <Link href="/learn">
+          <button className="learn-button">📚 Learn how to care for pets</button>
+        </Link>
+      </div>
 
       {/* FILTER BOX */}
       <div className="filter-box">
@@ -110,17 +128,26 @@ export default function Listings() {
         {/* CHECKBOXES */}
         <div className="filter-checkbox-row">
           <label className="chip">
-            <input type="checkbox" onChange={(e) => setFriendlyFilter(e.target.checked)} />
+            <input
+              type="checkbox"
+              onChange={(e) => setFriendlyFilter(e.target.checked)}
+            />
             😊 Friendly
           </label>
 
           <label className="chip">
-            <input type="checkbox" onChange={(e) => setVaccinatedFilter(e.target.checked)} />
+            <input
+              type="checkbox"
+              onChange={(e) => setVaccinatedFilter(e.target.checked)}
+            />
             💉 Vaccinated
           </label>
 
           <label className="chip">
-            <input type="checkbox" onChange={(e) => setTrainedFilter(e.target.checked)} />
+            <input
+              type="checkbox"
+              onChange={(e) => setTrainedFilter(e.target.checked)}
+            />
             🎓 Trained
           </label>
         </div>
@@ -128,40 +155,33 @@ export default function Listings() {
 
       {/* CARDS */}
       <div className="cards-container">
-        {pets
-          .filter((item) => {
-            return (
-              (maxAge === "" || Number(item.age) <= Number(maxAge)) &&
-              (searchLocation === "" ||
-                item.location
-                  ?.toLowerCase()
-                  .includes(searchLocation.toLowerCase())) &&
-              (!friendlyFilter || item.traits?.friendly) &&
-              (!vaccinatedFilter || item.traits?.vaccinated) &&
-              (!trainedFilter || item.traits?.trained) &&
-              (typeFilter === "" || item.type === typeFilter)
-            );
-          })
-          .map((item) => (
+        {loading ? (
+          <p style={{ textAlign: "center", width: "100%", fontSize: "18px" }}>
+            Loading pets...
+          </p>
+        ) : filteredPets.length === 0 ? (
+          <p style={{ textAlign: "center", width: "100%", fontSize: "18px" }}>
+            No pets found matching your filters.
+          </p>
+        ) : (
+          filteredPets.map((item) => (
             <div key={item.id} className="card-wrapper">
               <Link href={`/pet/${item.id}`}>
                 <div className="card">
                   {item.age < 2 && (
                     <div className="top-badge">⭐ Top Pick</div>
                   )}
-                  {/* BADGE */}
+
                   <div className="badge">
                     {item.status === "adopted" ? "🔴 Adopted" : "🟢 Available"}
                   </div>
 
-                  {/* IMAGE */}
                   <img
                     src={item.imageUrl || "/property.jpg"}
-                    alt="pet"
+                    alt={item.petName ? `${item.petName} pet photo` : "Pet photo"}
                     className="card-img"
                   />
 
-                  {/* CONTENT */}
                   <h2 className="card-title">{item.petName}</h2>
 
                   <p className="card-text">🎂 Age: {item.age}</p>
@@ -179,10 +199,9 @@ export default function Listings() {
                   </p>
                 </div>
               </Link>
-              
-              {/* ADOPT BUTTON */}
+
               {item.status !== "adopted" && (
-                <button 
+                <button
                   className="adopt-button"
                   onClick={() => handleAdopt(item.id)}
                 >
@@ -190,7 +209,8 @@ export default function Listings() {
                 </button>
               )}
             </div>
-          ))}
+          ))
+        )}
       </div>
     </div>
   );
